@@ -1,0 +1,24 @@
+<!-- app/views/insights/new.html.erb -->
+<h1>Choose Date Range and Options</h1>
+
+<%= form_tag('/fetch_data', method: 'get', class: "insights-form") do %>
+  <div class="field">
+    <%= label_tag 'start_date', 'Start Date' %>
+    <%= date_field_tag 'start_date', class: "form-control" %>
+  </div>
+
+  <div class="field">
+    <%= label_tag 'end_date', 'End Date' %>
+    <%= date_field_tag 'end_date', class: "form-control" %>
+  </div>
+
+  <div class="field">
+    <%= label_tag 'options', 'Options' %><br>
+    <% @options.each do |option| %>
+      <%= check_box_tag 'options[]', option %>
+      <%= label_tag option, option %><br>
+    <% end %>
+  </div>
+
+  <%= submit_tag 'Fetch Data', class: "btn btn-primary" %>
+<% end %>
