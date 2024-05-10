@@ -16,3 +16,14 @@
 
 @import "bootstrap-sprockets";
 @import "bootstrap";
+
+/* app/assets/stylesheets/application.scss */
+.options-section {
+    float: left;
+    width: 45%;
+  }
+  
+  .options-section:nth-child(odd) {
+    margin-right: 5%;
+  }
+  
