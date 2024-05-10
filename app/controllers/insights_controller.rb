@@ -36,7 +36,37 @@ class InsightsController < ApplicationController
       end
     end
 
-    render json: JSON.pretty_generate(form_sql_query(start_date, end_date, selected_account_level_dimensions, selected_campaign_level_dimensions, selected_adset_level_dimensions, selected_ad_level_dimensions, selected_metrics))
+    query = form_sql_query(start_date, end_date, selected_account_level_dimensions, selected_campaign_level_dimensions, selected_adset_level_dimensions, selected_ad_level_dimensions, selected_metrics)
+
+    columns = []
+
+    selected_account_level_dimensions.each do |dimension|
+      columns = columns << ACCOUNT_LEVEL_GROUPBY_DIMENSIONS[dimension]
+    end
+
+    selected_campaign_level_dimensions.each do |dimension|
+      columns = columns << CAMPAIGN_LEVEL_GROUPBY_DIMENSIONS[dimension]
+    end
+
+    selected_adset_level_dimensions.each do |dimension|
+      columns = columns << ADSET_LEVEL_GROUPBY_DIMENSIONS[dimension]
+    end
+
+    selected_ad_level_dimensions.each do |dimension|
+      columns = columns << AD_LEVEL_GROUPBY_DIMENSIONS[dimension]
+    end
+
+    selected_metrics.each do |metric|
+      columns = columns << METRICS[metric]
+    end
+
+    @column_headers = columns
+
+    db = SQLite3::Database.open 'insights.db'
+
+    @results = db.execute(query)
+
+    db.close
   end
 
   private

@@ -1,0 +1,21 @@
+<!-- app/views/insights/fetch_data.html.erb -->
+<h1>Insights Results</h1>
+
+<table class="table">
+  <thead>
+    <tr>
+      <% @column_headers.each do |column| %>
+        <th><%= column %></th>
+      <% end %>
+    </tr>
+  </thead>
+  <tbody>
+    <% @results.each do |row| %>
+      <tr>
+        <% row.each do |entry| %>
+          <td><%= entry %></td>
+        <% end %>
+      </tr>
+    <% end %>
+  </tbody>
+</table>
