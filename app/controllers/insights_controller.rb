@@ -3,7 +3,7 @@ class InsightsController < ApplicationController
   CAMPAIGN_LEVEL_GROUPBY_DIMENSIONS = {"campaign_id" => "Campaign Id", "campaign_name" => "Campaign Name", "objective" => "Campaign Objective", "buying_type" => "Campaign Buying Type"}
   ADSET_LEVEL_GROUPBY_DIMENSIONS = {"adset_id" => "Adset Id", "adset_name" => "Adset name", "optimization_goal" => "Adset Optimization Goal", "billing_event" => "Adset Billing Event", "bid_strategy" => "Adset Bid Strategy"}
   AD_LEVEL_GROUPBY_DIMENSIONS = {"ad_id" => "Ad Id", "ad_name" => "Ad Name", "ad_type" => "Ad Type"}
-  METRICS = {"ctr" => "Click-through rate", "inline_link_click_ctr" => "Inline link click-through rate", "clicks": "Clicks", "inline_link_clicks": "Inline link clicks", "cost_per_inline_link_click" => "Cost per inline link clicks", "impressions" => "Impressions", "spend" => "Spend", "mobile_app_installs" => "Mobile App Installs", "landing_page_view" => "Landing Page Views", "video_view" => "Video Views", "likes" => "Likes", "comment" => "Comments"}
+  METRICS = {"ctr" => "Click-through rate", "inline_link_click_ctr" => "Inline link click-through rate", "clicks" => "Clicks", "inline_link_clicks" => "Inline link clicks", "cost_per_inline_link_click" => "Cost per inline link clicks", "impressions" => "Impressions", "spend" => "Spend", "mobile_app_installs" => "Mobile App Installs", "landing_page_view" => "Landing Page Views", "video_view" => "Video Views", "likes" => "Likes", "comment" => "Comments"}
 
   def new
     @group_by_dimensions = ACCOUNT_LEVEL_GROUPBY_DIMENSIONS.merge(CAMPAIGN_LEVEL_GROUPBY_DIMENSIONS).merge(ADSET_LEVEL_GROUPBY_DIMENSIONS).merge(AD_LEVEL_GROUPBY_DIMENSIONS)

@@ -1,62 +1,70 @@
+require Rails.root.join('config/initializers/constants')
+
 class FacebookAdDimensionBackfillController < ApplicationController
-  ACCESS_TOKEN = 'EAAKDX99BZAz4BO6bXJm9vZCL4mwZBhFZACtutPb3tsHsCiF2gRv1N22TzUIAViNPzhA1buIN83DNSp6Q83s5CBRrnRKSqEWiTDBjDkrhU4kKhl3BIDZA2CV3wgB5xu2zxlUP5GwlUrB6oEJOZCrBGADWCZAZCw3X16zWVdZACsv8D3lKht8Pg3rb7xganYXyo5Ko8'
-  API_VERSION = 'v19.0'
+  def initialize
+    @logger = Logger.new('logfile.log')
+  end
 
   def fetch_and_store_ad_dimension_data
-    ad_account_ids = fetch_accounts
-    # ad_account_ids = ["act_2416286235360237"]
+    begin
+      db = open_db_connection
 
-    ads_dimensions = []
+      campaign_ids = fetch_all_campaigns_id(db)
 
-    threads = ad_account_ids.map do |account_id|
-      Concurrent::Future.execute { fetch_ads_dimensions(account_id) }
-    end
+      ads_dimensions = []
 
-    threads.each { |t| ads_dimensions.concat(t.value) }
+      thread_pool = Concurrent::ThreadPoolExecutor.new(min_threads: 1, max_threads: 10)
 
-    create_ad_dimensions_table
-
-    thread_pool = Concurrent::ThreadPoolExecutor.new(min_threads: 1, max_threads: 10)
-
-    ads_dimensions.each do |dimensions|
-      Concurrent::Promises.future_on(thread_pool) do
-        process_and_store_ad_dimensions(dimensions)
+      campaign_ids.each do |campaign_id|
+        Concurrent::Promises.future_on(thread_pool) do
+          data = fetch_ads_dimensions(campaign_id)
+          ads_dimensions.concat(data)
+        end
       end
+
+      thread_pool.shutdown
+      thread_pool.wait_for_termination
+
+      create_ad_dimensions_table(db)
+
+      thread_pool1 = Concurrent::ThreadPoolExecutor.new(min_threads: 1, max_threads: 10)
+
+      ads_dimensions.each do |dimensions|
+        Concurrent::Promises.future_on(thread_pool1) do
+          process_and_store_ad_dimensions(dimensions, db)
+        end
+      end
+
+      thread_pool1.shutdown
+      thread_pool1.wait_for_termination
+
+      close_db_connection(db)
+
+      render json: JSON.pretty_generate("Fetched dimensions for #{ads_dimensions.length()} adsets.")
+    rescue StandardError => e
+      render json: { error: "Internal Server Error. #{e.class}: #{e.message}" }, status: :internal_server_error
     end
-
-    # process_and_store_ad_dimensions(ads_dimensions[0])
-
-    thread_pool.shutdown
-    thread_pool.wait_for_termination
-
-    render json: JSON.pretty_generate(ads_dimensions.length())
   end
 
   private
-    def fetch_accounts
-      url = "https://graph.facebook.com/#{API_VERSION}/me/adaccounts?access_token=#{ACCESS_TOKEN}"
-
-      response = `curl "#{url}"`
-
-      ad_account_ids = JSON.parse(response)['data'].map { |account| account['id'] }
-
-      return ad_account_ids
-    end
-
-    def fetch_ads_dimensions(account_id)
+    def fetch_ads_dimensions(campaign_id)
       continue = true
 
       data = []
 
-      original_url = "https://graph.facebook.com/#{API_VERSION}/#{account_id}/ads?fields=name,adset_id,adcreatives\\{object_type,instagram_permalink_url,effective_object_story_id,object_story_spec\\}&limit=200&access_token=#{ACCESS_TOKEN}"
+      original_url = "https://graph.facebook.com/#{API_VERSION}/#{campaign_id}/ads?fields=name,adset_id,adcreatives\\{object_type,instagram_permalink_url,effective_object_story_id,object_story_spec\\}&limit=200&access_token=#{ACCESS_TOKEN}"
       url = original_url
 
       while continue do
         response = `curl "#{url}"`
 
+        if response.nil? || JSON.parse(response).nil? || !JSON.parse(response)['error'].nil?
+          @logger.warn("Error while fetching ad dimensions for campaign #{campaign_id} and date: #{date}.")
+        end
+
         json_response = JSON.parse(response)
 
-        if !json_response.nil? && !json_response["data"].nil?
+        if !json_response["data"].nil?
           data.concat(json_response["data"])
 
           if (!json_response["paging"].nil? && !json_response["paging"]["next"].nil?)
@@ -71,7 +79,7 @@ class FacebookAdDimensionBackfillController < ApplicationController
       data
     end
 
-    def process_and_store_ad_dimensions(raw_data)
+    def process_and_store_ad_dimensions(raw_data, db)
       ad_type = "UNKNOWN"
 
       if (!raw_data["adcreatives"].nil? && !raw_data["adcreatives"]["data"].nil? && !raw_data["adcreatives"]["data"].empty? && !raw_data["adcreatives"]["data"][0]["object_type"].nil?)
@@ -110,14 +118,19 @@ class FacebookAdDimensionBackfillController < ApplicationController
         instagram_post: instagram_post
       }
 
-      puts data
-
-      store_dimensions_for_ad(data)
+      store_dimensions_for_ad(data, db)
     end
 
-    def create_ad_dimensions_table
+    def open_db_connection
       db = SQLite3::Database.open 'insights.db'
+      db
+    end
 
+    def close_db_connection(db)
+      db.close
+    end
+
+    def create_ad_dimensions_table(db)
       db.execute "CREATE TABLE IF NOT EXISTS ad_dimensions (
           ad_id VARCHAR(255),
           ad_name VARCHAR(255),
@@ -128,16 +141,14 @@ class FacebookAdDimensionBackfillController < ApplicationController
           instagram_post VARCHAR(255),
           PRIMARY KEY (ad_id)
         )"
-
-      db.close
     end
 
-    def store_dimensions_for_ad(data)
-      db = SQLite3::Database.open 'insights.db'
-
+    def store_dimensions_for_ad(data, db)
       db.execute("REPLACE INTO ad_dimensions (ad_id, ad_name, adset_id, ad_type, landing_page, facebook_post, instagram_post) VALUES (?, ?, ?, ?, ?, ?, ?)",
               [data[:ad_id], data[:ad_name], data[:adset_id], data[:ad_type], data[:landing_page], data[:facebook_post], data[:instagram_post]])
+    end
 
-      db.close
+    def fetch_all_campaigns_id(db)
+      db.execute("SELECT DISTINCT campaign_id from campaign_insights").flatten;
     end
 end

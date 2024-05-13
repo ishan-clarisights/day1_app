@@ -1,26 +1,40 @@
+require Rails.root.join('config/initializers/constants')
+
 class FacebookCampaignInsightsBackfillController < ApplicationController
-  ACCESS_TOKEN = 'EAAKDX99BZAz4BO6bXJm9vZCL4mwZBhFZACtutPb3tsHsCiF2gRv1N22TzUIAViNPzhA1buIN83DNSp6Q83s5CBRrnRKSqEWiTDBjDkrhU4kKhl3BIDZA2CV3wgB5xu2zxlUP5GwlUrB6oEJOZCrBGADWCZAZCw3X16zWVdZACsv8D3lKht8Pg3rb7xganYXyo5Ko8'
-  API_VERSION = 'v19.0'
+  def initialize
+    @logger = Logger.new(STDOUT)
+    @logger.formatter = proc do |severity, datetime, progname, msg|
+      "#{severity}: #{msg}\n"
+    end
+  end
 
   def fetch_and_store_campaign_insights
-    ad_account_ids = fetch_accounts
+    begin
+      ad_account_ids = fetch_accounts
 
-    create_campaign_insights_table
+      db = open_db_connection
 
-    thread_pool = Concurrent::ThreadPoolExecutor.new(min_threads: 1, max_threads: 2)
+      create_campaign_insights_table(db)
 
-    (Date.parse('2024-03-01')..Date.parse('2024-05-06')).each do |date|
-      ad_account_ids.each do |account_id|
-        Concurrent::Promises.future_on(thread_pool) do
-          fetch_and_store_account_campaign_insights_for_date(account_id, date)
+      thread_pool = Concurrent::ThreadPoolExecutor.new(min_threads: 1, max_threads: 2)
+
+      (Date.parse('2024-05-04')..Date.parse('2024-05-13')).each do |date|
+        ad_account_ids.each do |account_id|
+          Concurrent::Promises.future_on(thread_pool) do
+            fetch_and_store_account_campaign_insights_for_date(account_id, date, db)
+          end
         end
       end
-    end
 
-    thread_pool.shutdown
-    thread_pool.wait_for_termination
-    
-    render json: JSON.pretty_generate("Done")
+      thread_pool.shutdown
+      thread_pool.wait_for_termination
+
+      close_db_connection(db)
+      
+      render json: JSON.pretty_generate("Done fetching insights for campaigns.")
+    rescue StandardError => e
+      render json: { error: "Internal Server Error. #{e.class}: #{e.message}" }, status: :internal_server_error
+    end
   end
 
   private
@@ -29,15 +43,23 @@ class FacebookCampaignInsightsBackfillController < ApplicationController
 
       response = `curl "#{url}"`
 
+      if(response.nil? || JSON.parse(response).nil? || JSON.parse(response)['data'].nil? )
+        raise ArgumentError, 'Unable to fetch accounts'
+      end
+
       ad_account_ids = JSON.parse(response)['data'].map { |account| account['id'] }
 
       return ad_account_ids
     end
 
-    def fetch_and_store_account_campaign_insights_for_date(account_id, date)
+    def fetch_and_store_account_campaign_insights_for_date(account_id, date, db)
       url = "https://graph.facebook.com/#{API_VERSION}/#{account_id}/insights?fields=campaign_id,account_id,ctr,inline_link_click_ctr,clicks,inline_link_clicks,cost_per_inline_link_click,impressions,spend,actions&time_range=\\{\'since\':\'#{date}\',\'until\':\'#{date}\'\\}&level=campaign&limit=10000&access_token=#{ACCESS_TOKEN}"
         
       response = `curl "#{url}"`
+
+      if response.nil? || JSON.parse(response).nil? || !JSON.parse(response)['error'].nil?
+        raise ArgumentError, "Error while fetching campaign insights for #{account_id} and date: #{date}."
+      end
 
       insights_data = JSON.parse(response)['data']
 
@@ -87,15 +109,24 @@ class FacebookCampaignInsightsBackfillController < ApplicationController
               comment: comment
             }
 
-            store_campaign_insights(data)
+            store_campaign_insights(data, db)
           end
         end
+      elsif
+        @logger.warn("Campaign insights not found for account: #{account_id} and date: #{date}")
       end
     end
 
-    def create_campaign_insights_table
+    def open_db_connection
       db = SQLite3::Database.open 'insights.db'
+      db
+    end
 
+    def close_db_connection(db)
+      db.close
+    end
+
+    def create_campaign_insights_table(db)
       db.execute "CREATE TABLE IF NOT EXISTS campaign_insights (
           campaign_id VARCHAR(255),
           date VARCHAR(255),
@@ -114,34 +145,24 @@ class FacebookCampaignInsightsBackfillController < ApplicationController
           comment INTEGER,
           PRIMARY KEY (campaign_id, date)
         )"
-
-        db.close
     end
 
-    def store_campaign_insights(row)
-      if !check_if_campaign_dimension_present(row[:campaign_id])
-        fetch_and_store_dimension(row[:campaign_id])
+    def store_campaign_insights(row, db)
+      if !check_if_campaign_dimension_present(row[:campaign_id], db)
+        fetch_and_store_dimension(row[:campaign_id], db)
       end
-
-      db = SQLite3::Database.open 'insights.db'
 
       db.execute("REPLACE INTO campaign_insights (campaign_id, date, account_id, ctr, inline_link_click_ctr, clicks, inline_link_clicks, cost_per_inline_link_click, impressions, spend, mobile_app_installs, landing_page_view, video_view, likes, comment) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 [row[:campaign_id], row[:date], "act_" + row[:account_id], row[:ctr], row[:inline_link_click_ctr], row[:clicks], row[:inline_link_clicks], row[:cost_per_inline_link_click], row[:impressions], row[:spend], row[:mobile_app_installs], row[:landing_page_view], row[:video_view], row[:likes], row[:comment]])
-
-      db.close
     end
 
-    def check_if_campaign_dimension_present(campaign_id)
-      db = SQLite3::Database.new 'insights.db'
-      
+    def check_if_campaign_dimension_present(campaign_id, db)
       result = db.get_first_value("SELECT COUNT(*) FROM campaign_dimensions WHERE campaign_id = ?", campaign_id)
-      
-      db.close
       
       result == 1
     end
 
-    def fetch_and_store_dimension(campaign_id)
+    def fetch_and_store_dimension(campaign_id, db)
       url = "https://graph.facebook.com/#{API_VERSION}/#{campaign_id}/?fields=name,account_id,start_time,objective,daily_budget,lifetime_budget,buying_type&access_token=#{ACCESS_TOKEN}"
 
       response = `curl "#{url}"`
@@ -149,16 +170,15 @@ class FacebookCampaignInsightsBackfillController < ApplicationController
       data = JSON.parse(response)
 
       if !data.nil?
-        actual_start_date = data["start_time"].split("T")[0]
-
-        data["start_date"] = actual_start_date
-
-        db = SQLite3::Database.open 'insights.db'
+        if !data["start_time"].nil? && !data["start_time"].split("T").nil? && !data["start_time"].split("T")[0].nil?
+          actual_start_date = data["start_time"].split("T")[0]
+          data["start_date"] = actual_start_date
+        elsif
+          data["start_date"] = ""
+        end
 
         db.execute("REPLACE INTO campaign_dimensions (campaign_id, campaign_name, start_date, account_id, objective, daily_budget, lifetime_budget, buying_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                 [data["id"], data["name"], data["start_date"], "act_" + data["account_id"], data["objective"], data["daily_budget"].to_f, data["lifetime_budget"].to_f, data["buying_type"]])
-
-        db.close
       end
     end
 end

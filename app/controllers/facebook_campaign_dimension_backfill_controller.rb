@@ -1,34 +1,56 @@
+require Rails.root.join('config/initializers/constants')
+
 class FacebookCampaignDimensionBackfillController < ApplicationController
-  ACCESS_TOKEN = 'EAAKDX99BZAz4BO6bXJm9vZCL4mwZBhFZACtutPb3tsHsCiF2gRv1N22TzUIAViNPzhA1buIN83DNSp6Q83s5CBRrnRKSqEWiTDBjDkrhU4kKhl3BIDZA2CV3wgB5xu2zxlUP5GwlUrB6oEJOZCrBGADWCZAZCw3X16zWVdZACsv8D3lKht8Pg3rb7xganYXyo5Ko8'
-  API_VERSION = 'v19.0'
+  def initialize
+    @logger = Logger.new(STDOUT)
+    @logger.formatter = proc do |severity, datetime, progname, msg|
+      "#{severity}: #{msg}\n"
+    end
+  end
 
   def fetch_and_store_campaign_dimension_data
-    ad_account_ids = fetch_accounts
+    begin
+      ad_account_ids = fetch_accounts
 
-    campaign_ids = []
+      campaign_ids = []
 
-    threads = ad_account_ids.map do |account_id|
-      Concurrent::Future.execute { fetch_campaign_ids_for_account(account_id) }
-    end
+      threads = ad_account_ids.map do |account_id|
+        Concurrent::Future.execute { fetch_campaign_ids_for_account(account_id) }
+      end
 
-    threads.each { |t| campaign_ids.concat(t.value) }
+      threads.each { |t| 
+        if (!t.nil? && !t.value.nil?) 
+          campaign_ids.concat(t.value)
+        end
+      }
 
-    create_campaign_dimensions_table
+      @logger.info("Total campaigns to get dimensions for: #{campaign_ids.length()}")
 
-    thread_pool = Concurrent::ThreadPoolExecutor.new(min_threads: 1, max_threads: 500)
+      db = open_db_connection
 
-    campaign_ids.each do |campaign_id|
-      Concurrent::Promises.future_on(thread_pool) do
-        fetch_campaign_dimensions(campaign_id).then do |data|
-          store_dimensions_for_campaign(data)
+      create_campaign_dimensions_table(db)
+
+      thread_pool = Concurrent::ThreadPoolExecutor.new(min_threads: 1, max_threads: 10)
+
+      campaign_ids.each do |campaign_id|
+        Concurrent::Promises.future_on(thread_pool) do
+          fetch_campaign_dimensions(campaign_id).then do |data|
+            if !data.nil?
+              store_dimensions_for_campaign(data, db)
+            end
+          end
         end
       end
+
+      thread_pool.shutdown
+      thread_pool.wait_for_termination
+      
+      close_db_connection(db)
+
+      render json: JSON.pretty_generate("Fetched dimensions for #{campaign_ids.length()} campaigns.")
+    rescue StandardError => e
+      render json: { error: "Internal Server Error. #{e.class}: #{e.message}" }, status: :internal_server_error
     end
-
-    thread_pool.shutdown
-    thread_pool.wait_for_termination
-
-    render json: JSON.pretty_generate(campaign_ids.length())
   end
 
   private
@@ -36,6 +58,10 @@ class FacebookCampaignDimensionBackfillController < ApplicationController
       url = "https://graph.facebook.com/#{API_VERSION}/me/adaccounts?access_token=#{ACCESS_TOKEN}"
 
       response = `curl "#{url}"`
+
+      if(response.nil? || JSON.parse(response).nil? || JSON.parse(response)['data'].nil? )
+        raise ArgumentError, 'Unable to fetch accounts'
+      end
 
       ad_account_ids = JSON.parse(response)['data'].map { |account| account['id'] }
 
@@ -47,11 +73,16 @@ class FacebookCampaignDimensionBackfillController < ApplicationController
 
       response = `curl "#{url}"`
 
+      if(response.nil? || JSON.parse(response).nil? ||  JSON.parse(response)['data'].nil?)
+        raise ArgumentError, "Did not receive a valid response while fetching campaigns for account: #{account_id}"
+      end
+
       campaign_ids = JSON.parse(response)['data'].map { |campaign| campaign['id'] }
 
       if !campaign_ids.nil? && !campaign_ids.empty?
         campaign_ids
       else
+        @logger.warn("No campaigns found for account: #{account_id}")
         []
       end
     end
@@ -62,17 +93,25 @@ class FacebookCampaignDimensionBackfillController < ApplicationController
       response = `curl "#{url}"`
 
       campaign_dimensions = JSON.parse(response)
-    
-      actual_start_date = campaign_dimensions["start_time"].split("T")[0]
 
-      campaign_dimensions["start_date"] = actual_start_date
+      if !campaign_dimensions.nil? && !campaign_dimensions["start_time"].nil? && !campaign_dimensions["start_time"].split("T").nil? && !campaign_dimensions["start_time"].split("T")[0].nil?
+        actual_start_date = campaign_dimensions["start_time"].split("T")[0]
+        campaign_dimensions["start_date"] = actual_start_date
+      end
 
       campaign_dimensions
     end
 
-    def create_campaign_dimensions_table
+    def open_db_connection
       db = SQLite3::Database.open 'insights.db'
+      db
+    end
 
+    def close_db_connection(db)
+      db.close
+    end
+
+    def create_campaign_dimensions_table(db)
       db.execute "CREATE TABLE IF NOT EXISTS campaign_dimensions (
           campaign_id VARCHAR(255),
           campaign_name VARCHAR(255),
@@ -84,17 +123,11 @@ class FacebookCampaignDimensionBackfillController < ApplicationController
           buying_type VARCHAR(255),
           PRIMARY KEY (campaign_id)
         )"
-
-      db.close
     end
 
     def store_dimensions_for_campaign(data)
-      db = SQLite3::Database.open 'insights.db'
-
       db.execute("REPLACE INTO campaign_dimensions (campaign_id, campaign_name, start_date, account_id, objective, daily_budget, lifetime_budget, buying_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
               [data["id"], data["name"], data["start_date"], "act_" + data["account_id"], data["objective"], data["daily_budget"].to_f, data["lifetime_budget"].to_f, data["buying_type"]])
-
-      db.close
     end
 end
 
