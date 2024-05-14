@@ -16,9 +16,9 @@ class FacebookAdsController < ApplicationController
 
       create_account_insights_table(db)
 
-      thread_pool = Concurrent::ThreadPoolExecutor.new(min_threads: 1, max_threads: 10)
+      thread_pool = Concurrent::ThreadPoolExecutor.new(min_threads: 1, max_threads: 1)
 
-      (Date.parse('2024-05-04')..Date.parse('2024-05-13')).each do |date|
+      (Date.parse('2024-03-01')..Date.parse('2024-05-13')).each do |date|
         ad_account_ids.each do |account_id|
           Concurrent::Promises.future_on(thread_pool) do
             fetch_and_store_account_insights_data(account_id, date, db)

@@ -30,7 +30,7 @@ class FacebookAdSetDimensionBackfillController < ApplicationController
 
       create_adset_dimensions_table(db)
 
-      thread_pool = Concurrent::ThreadPoolExecutor.new(min_threads: 1, max_threads: 10)
+      thread_pool = Concurrent::ThreadPoolExecutor.new(min_threads: 1, max_threads: 1)
 
       adset_ids.each do |adset_id|
         Concurrent::Promises.future_on(thread_pool) do

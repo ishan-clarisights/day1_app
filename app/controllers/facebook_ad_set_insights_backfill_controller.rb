@@ -36,7 +36,7 @@ class FacebookAdSetInsightsBackfillController < ApplicationController
 
   private
     def fetch_and_store_campaign_adsets_insights_for_date(campaign_id, date, db)
-      url = "https://graph.facebook.com/#{API_VERSION}/#{campaign_id}/insights?fields=adset_id,campaign_id,ctr,inline_link_click_ctr,clicks,inline_link_clicks,cost_per_inline_link_click,impressions,spend,actions&time_range=\\{\'since\':\'#{date}\',\'until\':\'#{date}\'\\}&level=adset&limit=10000&access_token=#{ACCESS_TOKEN}"
+      url = "https://graph.facebook.com/#{API_VERSION}/#{campaign_id}/insights?fields=adset_id,campaign_id,account_id,ctr,inline_link_click_ctr,clicks,inline_link_clicks,cost_per_inline_link_click,impressions,spend,actions&time_range=\\{\'since\':\'#{date}\',\'until\':\'#{date}\'\\}&level=adset&limit=10000&access_token=#{ACCESS_TOKEN}"
         
       response = `curl "#{url}"`
 
@@ -78,6 +78,7 @@ class FacebookAdSetInsightsBackfillController < ApplicationController
               adset_id: insight["adset_id"],
               date: date.to_s,
               campaign_id: insight["campaign_id"],
+              account_id: "act_" + insight["account_id"],
               ctr: insight["ctr"].to_f,
               inline_link_click_ctr: insight["inline_link_click_ctr"].to_f,
               clicks: insight["clicks"].to_i,
@@ -114,6 +115,7 @@ class FacebookAdSetInsightsBackfillController < ApplicationController
           adset_id VARCHAR(255),
           date VARCHAR(255),
           campaign_id VARCHAR(255),
+          account_id VARCHAR(255),
           ctr FLOAT,
           inline_link_click_ctr FLOAT,
           clicks INTEGER,
@@ -135,8 +137,8 @@ class FacebookAdSetInsightsBackfillController < ApplicationController
         fetch_and_store_dimension(row[:adset_id], db)
       end
 
-      db.execute("REPLACE INTO adset_insights (adset_id, date, campaign_id, ctr, inline_link_click_ctr, clicks, inline_link_clicks, cost_per_inline_link_click, impressions, spend, mobile_app_installs, landing_page_view, video_view, likes, comment) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                [row[:adset_id], row[:date], row[:campaign_id], row[:ctr], row[:inline_link_click_ctr], row[:clicks], row[:inline_link_clicks], row[:cost_per_inline_link_click], row[:impressions], row[:spend], row[:mobile_app_installs], row[:landing_page_view], row[:video_view], row[:likes], row[:comment]])
+      db.execute("REPLACE INTO adset_insights (adset_id, date, campaign_id, account_id, ctr, inline_link_click_ctr, clicks, inline_link_clicks, cost_per_inline_link_click, impressions, spend, mobile_app_installs, landing_page_view, video_view, likes, comment) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                [row[:adset_id], row[:date], row[:campaign_id], row[:account_id], row[:ctr], row[:inline_link_click_ctr], row[:clicks], row[:inline_link_clicks], row[:cost_per_inline_link_click], row[:impressions], row[:spend], row[:mobile_app_installs], row[:landing_page_view], row[:video_view], row[:likes], row[:comment]])
     end
 
     def check_if_adset_dimension_present(adset_id, db)

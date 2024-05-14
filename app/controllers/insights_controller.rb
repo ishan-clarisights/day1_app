@@ -4,15 +4,18 @@ class InsightsController < ApplicationController
   ADSET_LEVEL_GROUPBY_DIMENSIONS = {"adset_id" => "Adset Id", "adset_name" => "Adset name", "optimization_goal" => "Adset Optimization Goal", "billing_event" => "Adset Billing Event", "bid_strategy" => "Adset Bid Strategy"}
   AD_LEVEL_GROUPBY_DIMENSIONS = {"ad_id" => "Ad Id", "ad_name" => "Ad Name", "ad_type" => "Ad Type"}
   METRICS = {"ctr" => "Click-through rate", "inline_link_click_ctr" => "Inline link click-through rate", "clicks" => "Clicks", "inline_link_clicks" => "Inline link clicks", "cost_per_inline_link_click" => "Cost per inline link clicks", "impressions" => "Impressions", "spend" => "Spend", "mobile_app_installs" => "Mobile App Installs", "landing_page_view" => "Landing Page Views", "video_view" => "Video Views", "likes" => "Likes", "comment" => "Comments"}
+  ACCOUNT_NAME_TO_ID = {}
 
   def new
     @group_by_dimensions = ACCOUNT_LEVEL_GROUPBY_DIMENSIONS.merge(CAMPAIGN_LEVEL_GROUPBY_DIMENSIONS).merge(ADSET_LEVEL_GROUPBY_DIMENSIONS).merge(AD_LEVEL_GROUPBY_DIMENSIONS)
     @metrics = METRICS
+    @accounts =  fetch_accounts
   end
 
   def fetch_data
     start_date = params[:start_date]
     end_date = params[:end_date]
+    selected_account_id = params[:account_id]
     selected_group_by_dimensions = params[:group_by_dimensions] || []
     selected_metrics = params[:metrics] || []
 
@@ -36,7 +39,7 @@ class InsightsController < ApplicationController
       end
     end
 
-    query = form_sql_query(start_date, end_date, selected_account_level_dimensions, selected_campaign_level_dimensions, selected_adset_level_dimensions, selected_ad_level_dimensions, selected_metrics)
+    query = form_sql_query(start_date, end_date, selected_account_id, selected_account_level_dimensions, selected_campaign_level_dimensions, selected_adset_level_dimensions, selected_ad_level_dimensions, selected_metrics)
 
     columns = []
 
@@ -70,7 +73,7 @@ class InsightsController < ApplicationController
   end
 
   private
-    def form_sql_query(start_date, end_date, selected_account_level_dimensions, selected_campaign_level_dimensions, selected_adset_level_dimensions, selected_ad_level_dimensions, selected_metrics)
+    def form_sql_query(start_date, end_date, selected_account_id, selected_account_level_dimensions, selected_campaign_level_dimensions, selected_adset_level_dimensions, selected_ad_level_dimensions, selected_metrics)
       query = "SELECT "
 
       selected_account_level_dimensions.each do |dimension|
@@ -203,5 +206,21 @@ class InsightsController < ApplicationController
       query = query[0..-3]
 
       query
+    end
+
+    def fetch_accounts()
+      db = SQLite3::Database.open 'insights.db'
+
+      result = db.execute('SELECT DISTINCT(account_id), account_name from account_insights')
+
+      accounts = {}
+
+      result.each do |row|
+        accounts[row[1]] = row[0]
+      end
+
+      db.close
+
+      accounts
     end
 end

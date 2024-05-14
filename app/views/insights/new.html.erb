@@ -1,38 +1,48 @@
 <!-- app/views/insights/new.html.erb -->
-<h1>Choose Date Range and Options</h1>
+<div class="container">
+  <h1>Choose Date Range and Options</h1>
 
-<%= form_tag('/fetch_data', method: 'get', class: "insights-form") do %>
+  <%= form_tag('/fetch_data', method: 'get', class: "insights-form") do %>
 
-  <div class="field">
-    <%= label_tag 'start_date', 'Start Date' %>
-    <%= date_field_tag 'start_date', class: "form-control", required: true, min: Date.new(2024, 03, 01), max: Date.today%>
-  </div>
-
-  <div class="field">
-    <%= label_tag 'end_date', 'End Date' %>
-    <%= date_field_tag 'end_date', class: "form-control", max: '2024-05-05', required: true%>
-  </div>
-
-  <br>
-  <br>
-
-  <div class="field">
-    <div class="options-section">
-      <%= label_tag 'dimensions', 'Group By Dimensions' %><br>
-      <% @group_by_dimensions.each do |internal_representation, display_name| %>
-        <%= check_box_tag 'group_by_dimensions[]', internal_representation %>
-        <%= label_tag internal_representation, display_name %><br>
-      <% end %>
+    <div class="field">
+      <%= label_tag 'start_date', 'Start Date' %>
+      <%= date_field_tag 'start_date', class: "form-control", required: true, min: Date.new(2024, 03, 01), max: Date.today%>
     </div>
-    
-    <div class="options-section">
-      <%= label_tag 'metrics', 'Metrics' %><br>
-      <% @metrics.each do |internal_representation, display_name| %>
-        <%= check_box_tag 'metrics[]', internal_representation %>
-        <%= label_tag internal_representation, display_name %><br>
-      <% end %>
-    </div>
-  </div>
 
-  <%= submit_tag 'Fetch Data', class: "btn btn-primary" %>
-<% end %>
+    <div class="field">
+      <%= label_tag 'end_date', 'End Date' %>
+      <%= date_field_tag 'end_date', class: "form-control", max: '2024-05-05', required: true%>
+    </div>
+
+    <br>
+    <br>
+
+    <div class="field">
+      <%= label_tag 'account_id', 'Account ID' %>
+      <%= select_tag 'account_id', options_for_select(@accounts), class: "form-control" %>
+    </div>
+
+    <br>
+    <br>
+
+    <div class="field">
+      <div class="options-section">
+        <%= label_tag 'dimensions', 'Group By Dimensions' %><br>
+        <% @group_by_dimensions.each do |internal_representation, display_name| %>
+          <%= check_box_tag 'group_by_dimensions[]', internal_representation %>
+          <%= label_tag internal_representation, display_name %><br>
+        <% end %>
+      </div>
+      
+      <div class="options-section">
+        <%= label_tag 'metrics', 'Metrics' %><br>
+        <% @metrics.each do |internal_representation, display_name| %>
+          <%= check_box_tag 'metrics[]', internal_representation %>
+          <%= label_tag internal_representation, display_name %><br>
+        <% end %>
+      </div>
+    </div>
+
+    <%= submit_tag 'Fetch Data', class: "btn btn-primary" %>
+  <% end %>
+</div>

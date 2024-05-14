@@ -47,19 +47,33 @@ class FacebookAdDimensionBackfillController < ApplicationController
   end
 
   private
-    def fetch_ads_dimensions(campaign_id)
+    def fetch_accounts
+      url = "https://graph.facebook.com/#{API_VERSION}/me/adaccounts?access_token=#{ACCESS_TOKEN}"
+
+      response = `curl "#{url}"`
+
+      if(response.nil? || JSON.parse(response).nil? || JSON.parse(response)['data'].nil? )
+        raise ArgumentError, 'Unable to fetch accounts'
+      end
+
+      ad_account_ids = JSON.parse(response)['data'].map { |account| account['id'] }
+
+      return ad_account_ids
+    end
+
+    def fetch_ads_dimensions(level_id)
       continue = true
 
       data = []
 
-      original_url = "https://graph.facebook.com/#{API_VERSION}/#{campaign_id}/ads?fields=name,adset_id,adcreatives\\{object_type,instagram_permalink_url,effective_object_story_id,object_story_spec\\}&limit=200&access_token=#{ACCESS_TOKEN}"
+      original_url = "https://graph.facebook.com/#{API_VERSION}/#{level_id}/ads?fields=name,adset_id,adcreatives\\{object_type,instagram_permalink_url,effective_object_story_id,object_story_spec\\}&limit=200&access_token=#{ACCESS_TOKEN}"
       url = original_url
 
       while continue do
         response = `curl "#{url}"`
 
         if response.nil? || JSON.parse(response).nil? || !JSON.parse(response)['error'].nil?
-          @logger.warn("Error while fetching ad dimensions for campaign #{campaign_id} and date: #{date}.")
+          @logger.warn("Error while fetching ad dimensions for level #{level_id} and date: #{date}.")
         end
 
         json_response = JSON.parse(response)

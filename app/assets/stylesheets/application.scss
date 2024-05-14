@@ -19,11 +19,15 @@
 
 /* app/assets/stylesheets/application.scss */
 .options-section {
-    float: left;
-    width: 45%;
-  }
+  float: left;
+  width: 45%;
+}
   
-  .options-section:nth-child(odd) {
-    margin-right: 5%;
-  }
+.options-section:nth-child(odd) {
+  margin-right: 5%;
+}
   
+.container {
+  margin-left: 20px;
+  margin-right: 20px;
+}

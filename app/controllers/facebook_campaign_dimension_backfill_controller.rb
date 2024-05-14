@@ -30,7 +30,7 @@ class FacebookCampaignDimensionBackfillController < ApplicationController
 
       create_campaign_dimensions_table(db)
 
-      thread_pool = Concurrent::ThreadPoolExecutor.new(min_threads: 1, max_threads: 10)
+      thread_pool = Concurrent::ThreadPoolExecutor.new(min_threads: 1, max_threads: 1)
 
       campaign_ids.each do |campaign_id|
         Concurrent::Promises.future_on(thread_pool) do
