@@ -1,6 +1,9 @@
 <!-- app/views/insights/fetch_data.html.erb -->
 <h1>Insights Results</h1>
-
+<br/>
+<h3> Account Name: <%= @account_name_to_display %></h3>
+<h3> Account Id: <%= @account_id_to_display %></h3>
+<br/>
 <table class="table">
   <thead>
     <tr>
@@ -10,6 +13,11 @@
     </tr>
   </thead>
   <tbody>
+    <tr>
+      <% @metrics_agg[0].each do |entry| %>
+        <th><%= entry %></th>
+      <% end %>
+    </tr>
     <% @results.each do |row| %>
       <tr>
         <% row.each do |entry| %>
