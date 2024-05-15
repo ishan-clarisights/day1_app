@@ -2,10 +2,7 @@ require Rails.root.join('config/initializers/constants')
 
 class FacebookCampaignInsightsBackfillController < ApplicationController
   def initialize
-    @logger = Logger.new(STDOUT)
-    @logger.formatter = proc do |severity, datetime, progname, msg|
-      "#{severity}: #{msg}\n"
-    end
+    @logger = Logger.new('logfile.log')
   end
 
   def fetch_and_store_campaign_insights
@@ -16,9 +13,9 @@ class FacebookCampaignInsightsBackfillController < ApplicationController
 
       create_campaign_insights_table(db)
 
-      thread_pool = Concurrent::ThreadPoolExecutor.new(min_threads: 1, max_threads: 1)
+      thread_pool = Concurrent::ThreadPoolExecutor.new(min_threads: 1, max_threads: 10)
 
-      (Date.parse('2024-03-01')..Date.parse('2024-05-13')).each do |date|
+      (Date.parse('2024-03-01')..Date.parse('2024-05-14')).each do |date|
         ad_account_ids.each do |account_id|
           Concurrent::Promises.future_on(thread_pool) do
             fetch_and_store_account_campaign_insights_for_date(account_id, date, db)
@@ -58,6 +55,7 @@ class FacebookCampaignInsightsBackfillController < ApplicationController
       response = `curl "#{url}"`
 
       if response.nil? || JSON.parse(response).nil? || !JSON.parse(response)['error'].nil?
+        @logger.error("Error while fetching campaign insights for #{account_id} and date: #{date}. #{response} #{url}")
         raise ArgumentError, "Error while fetching campaign insights for #{account_id} and date: #{date}."
       end
 
@@ -73,21 +71,23 @@ class FacebookCampaignInsightsBackfillController < ApplicationController
             comment = 0
 
             actions =  insight["actions"]
-            actions.each do |action|
-              if action["action_type"] == "mobile_app_install"
-                mobile_app_installs += action["value"].to_i
-              end
-              if action["action_type"] == "like"
-                likes += action["value"].to_i
-              end
-              if action["action_type"] == "landing_page_view"
-                landing_page_view += action["value"].to_i
-              end
-              if action["action_type"] == "video_view"
-                video_view += action["value"].to_i
-              end
-              if action["action_type"] == "comment"
-                comment += action["value"].to_i
+            if !actions.nil?
+              actions.each do |action|
+                if action["action_type"] == "mobile_app_install"
+                  mobile_app_installs += action["value"].to_i
+                end
+                if action["action_type"] == "like"
+                  likes += action["value"].to_i
+                end
+                if action["action_type"] == "landing_page_view"
+                  landing_page_view += action["value"].to_i
+                end
+                if action["action_type"] == "video_view"
+                  video_view += action["value"].to_i
+                end
+                if action["action_type"] == "comment"
+                  comment += action["value"].to_i
+                end
               end
             end
 
@@ -95,13 +95,13 @@ class FacebookCampaignInsightsBackfillController < ApplicationController
               campaign_id: insight["campaign_id"],
               date: date.to_s,
               account_id: insight["account_id"],
-              ctr: insight["ctr"].to_f,
-              inline_link_click_ctr: insight["inline_link_click_ctr"].to_f,
-              clicks: insight["clicks"].to_i,
-              inline_link_clicks: insight["inline_link_clicks"].to_i,
-              cost_per_inline_link_click: insight["cost_per_inline_link_click"].to_f,
-              impressions: insight["impressions"].to_i,
-              spend: insight["spend"].to_f,
+              ctr: insight["ctr"].nil? ? 0 : insight["ctr"].to_f,
+              inline_link_click_ctr: insight["inline_link_click_ctr"].nil? ? 0 : insight["inline_link_click_ctr"].to_f,
+              clicks: insight["clicks"].nil? ? 0 : insight["clicks"].to_i,
+              inline_link_clicks: insight["inline_link_clicks"].nil? ? 0 : insight["inline_link_clicks"].to_i,
+              cost_per_inline_link_click: insight["cost_per_inline_link_click"].nil? ? 0 : insight["cost_per_inline_link_click"].to_f,
+              impressions: insight["impressions"].nil? ? 0 : insight["impressions"].to_i,
+              spend: insight["spend"].nil? ? 0 : insight["spend"].to_f,
               mobile_app_installs: mobile_app_installs,
               landing_page_view: landing_page_view,
               video_view: video_view,
@@ -112,8 +112,6 @@ class FacebookCampaignInsightsBackfillController < ApplicationController
             store_campaign_insights(data, db)
           end
         end
-      elsif
-        @logger.warn("Campaign insights not found for account: #{account_id} and date: #{date}")
       end
     end
 

@@ -15,7 +15,7 @@ class FacebookAdInsightsBackfillController < ApplicationController
 
       thread_pool = Concurrent::ThreadPoolExecutor.new(min_threads: 1, max_threads: 10)
 
-      (Date.parse('2024-03-01')..Date.parse('2024-05-13')).each do |date|
+      (Date.parse('2024-03-01')..Date.parse('2024-05-14')).each do |date|
         campaign_ids.each do |campaign_id|
           Concurrent::Promises.future_on(thread_pool) do
             fetch_and_store_campaign_ads_insights_for_date(campaign_id, date, db)
@@ -41,7 +41,7 @@ class FacebookAdInsightsBackfillController < ApplicationController
       response = `curl "#{url}"`
 
       if response.nil? || JSON.parse(response).nil? || !JSON.parse(response)['error'].nil?
-        @logger.warn("Error while fetching ad insights for campaign #{campaign_id} and date: #{date}.")
+        @logger.error("Error while fetching ad insights for campaign #{campaign_id} and date: #{date}. #{response} #{url}")
       end
 
       insights_data = JSON.parse(response)['data']
@@ -56,21 +56,24 @@ class FacebookAdInsightsBackfillController < ApplicationController
             comment = 0
 
             actions =  insight["actions"]
-            actions.each do |action|
-              if action["action_type"] == "mobile_app_install"
-                mobile_app_installs += action["value"].to_i
-              end
-              if action["action_type"] == "like"
-                likes += action["value"].to_i
-              end
-              if action["action_type"] == "landing_page_view"
-                landing_page_view += action["value"].to_i
-              end
-              if action["action_type"] == "video_view"
-                video_view += action["value"].to_i
-              end
-              if action["action_type"] == "comment"
-                comment += action["value"].to_i
+
+            if !actions.nil?
+              actions.each do |action|
+                if action["action_type"] == "mobile_app_install"
+                  mobile_app_installs += action["value"].to_i
+                end
+                if action["action_type"] == "like"
+                  likes += action["value"].to_i
+                end
+                if action["action_type"] == "landing_page_view"
+                  landing_page_view += action["value"].to_i
+                end
+                if action["action_type"] == "video_view"
+                  video_view += action["value"].to_i
+                end
+                if action["action_type"] == "comment"
+                  comment += action["value"].to_i
+                end
               end
             end
 
@@ -79,13 +82,13 @@ class FacebookAdInsightsBackfillController < ApplicationController
               date: date.to_s,
               adset_id: insight["adset_id"],
               account_id: "act_" + insight["account_id"],
-              ctr: insight["ctr"].to_f,
-              inline_link_click_ctr: insight["inline_link_click_ctr"].to_f,
-              clicks: insight["clicks"].to_i,
-              inline_link_clicks: insight["inline_link_clicks"].to_i,
-              cost_per_inline_link_click: insight["cost_per_inline_link_click"].to_f,
-              impressions: insight["impressions"].to_i,
-              spend: insight["spend"].to_f,
+              ctr: insight["ctr"].nil? ? 0 : insight["ctr"].to_f,
+              inline_link_click_ctr: insight["inline_link_click_ctr"].nil? ? 0 : insight["inline_link_click_ctr"].to_f,
+              clicks: insight["clicks"].nil? ? 0 : insight["clicks"].to_i,
+              inline_link_clicks: insight["inline_link_clicks"].nil? ? 0 : insight["inline_link_clicks"].to_i,
+              cost_per_inline_link_click: insight["cost_per_inline_link_click"].nil? ? 0 : insight["cost_per_inline_link_click"].to_f,
+              impressions: insight["impressions"].nil? ? 0 : insight["impressions"].to_i,
+              spend: insight["spend"].nil? ? 0 : insight["spend"].to_f,
               mobile_app_installs: mobile_app_installs,
               landing_page_view: landing_page_view,
               video_view: video_view,
@@ -96,8 +99,6 @@ class FacebookAdInsightsBackfillController < ApplicationController
             store_ad_insights(data, db)
           end
         end
-      elsif
-        @logger.warn("Ad insights not found for campaign: #{campaign_id} and date: #{date}")
       end
     end
 

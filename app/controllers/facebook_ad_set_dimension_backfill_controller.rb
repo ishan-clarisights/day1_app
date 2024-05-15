@@ -2,10 +2,7 @@ require Rails.root.join('config/initializers/constants')
 
 class FacebookAdSetDimensionBackfillController < ApplicationController
   def initialize
-    @logger = Logger.new(STDOUT)
-    @logger.formatter = proc do |severity, datetime, progname, msg|
-      "#{severity}: #{msg}\n"
-    end
+    @logger = Logger.new('logfile.log')
   end
 
   def fetch_and_store_adset_dimension_data
@@ -24,13 +21,11 @@ class FacebookAdSetDimensionBackfillController < ApplicationController
         end
       }
 
-      @logger.info("Total adsets to get dimensions for: #{adset_ids.length()}")
-
       db = open_db_connection
 
       create_adset_dimensions_table(db)
 
-      thread_pool = Concurrent::ThreadPoolExecutor.new(min_threads: 1, max_threads: 1)
+      thread_pool = Concurrent::ThreadPoolExecutor.new(min_threads: 1, max_threads: 10)
 
       adset_ids.each do |adset_id|
         Concurrent::Promises.future_on(thread_pool) do
@@ -74,6 +69,7 @@ class FacebookAdSetDimensionBackfillController < ApplicationController
       response = `curl "#{url}"`
 
       if(response.nil? || JSON.parse(response).nil? ||  JSON.parse(response)['data'].nil?)
+        @logger.error("Did not receive a valid response while fetching adsets for account: #{account_id}")
         raise ArgumentError, "Did not receive a valid response while fetching adsets for account: #{account_id}"
       end
 
@@ -82,7 +78,6 @@ class FacebookAdSetDimensionBackfillController < ApplicationController
       if !adset_ids.nil? && !adset_ids.empty?
         adset_ids
       else
-        @logger.warn("No adsets found for account: #{account_id}")
         []
       end
     end

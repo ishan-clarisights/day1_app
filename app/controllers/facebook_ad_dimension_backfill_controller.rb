@@ -47,20 +47,6 @@ class FacebookAdDimensionBackfillController < ApplicationController
   end
 
   private
-    def fetch_accounts
-      url = "https://graph.facebook.com/#{API_VERSION}/me/adaccounts?access_token=#{ACCESS_TOKEN}"
-
-      response = `curl "#{url}"`
-
-      if(response.nil? || JSON.parse(response).nil? || JSON.parse(response)['data'].nil? )
-        raise ArgumentError, 'Unable to fetch accounts'
-      end
-
-      ad_account_ids = JSON.parse(response)['data'].map { |account| account['id'] }
-
-      return ad_account_ids
-    end
-
     def fetch_ads_dimensions(level_id)
       continue = true
 
@@ -73,7 +59,7 @@ class FacebookAdDimensionBackfillController < ApplicationController
         response = `curl "#{url}"`
 
         if response.nil? || JSON.parse(response).nil? || !JSON.parse(response)['error'].nil?
-          @logger.warn("Error while fetching ad dimensions for level #{level_id} and date: #{date}.")
+          @logger.error("Error while fetching ad dimensions for level #{level_id} and date: #{date}. #{response} #{url}")
         end
 
         json_response = JSON.parse(response)

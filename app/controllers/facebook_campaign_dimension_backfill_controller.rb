@@ -2,10 +2,7 @@ require Rails.root.join('config/initializers/constants')
 
 class FacebookCampaignDimensionBackfillController < ApplicationController
   def initialize
-    @logger = Logger.new(STDOUT)
-    @logger.formatter = proc do |severity, datetime, progname, msg|
-      "#{severity}: #{msg}\n"
-    end
+    @logger = Logger.new('logfile.log')
   end
 
   def fetch_and_store_campaign_dimension_data
@@ -24,13 +21,11 @@ class FacebookCampaignDimensionBackfillController < ApplicationController
         end
       }
 
-      @logger.info("Total campaigns to get dimensions for: #{campaign_ids.length()}")
-
       db = open_db_connection
 
       create_campaign_dimensions_table(db)
 
-      thread_pool = Concurrent::ThreadPoolExecutor.new(min_threads: 1, max_threads: 1)
+      thread_pool = Concurrent::ThreadPoolExecutor.new(min_threads: 1, max_threads: 10)
 
       campaign_ids.each do |campaign_id|
         Concurrent::Promises.future_on(thread_pool) do
@@ -74,6 +69,7 @@ class FacebookCampaignDimensionBackfillController < ApplicationController
       response = `curl "#{url}"`
 
       if(response.nil? || JSON.parse(response).nil? ||  JSON.parse(response)['data'].nil?)
+        @logger.error("Did not receive a valid response while fetching campaigns for account: #{account_id}")
         raise ArgumentError, "Did not receive a valid response while fetching campaigns for account: #{account_id}"
       end
 
@@ -82,7 +78,6 @@ class FacebookCampaignDimensionBackfillController < ApplicationController
       if !campaign_ids.nil? && !campaign_ids.empty?
         campaign_ids
       else
-        @logger.warn("No campaigns found for account: #{account_id}")
         []
       end
     end

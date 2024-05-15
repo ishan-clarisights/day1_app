@@ -163,7 +163,7 @@ class InsightsController < ApplicationController
       end
 
       if(selected_campaign_level_dimensions.empty? && selected_adset_level_dimensions.empty? && !selected_ad_level_dimensions.empty?)
-        query = query + "FROM adset_dimensions asd "
+        query = query + "FROM ad_dimensions ad "
       end
 
       if(!selected_ad_level_dimensions.empty?)
@@ -266,7 +266,7 @@ class InsightsController < ApplicationController
       end
 
       if(selected_campaign_level_dimensions.empty? && selected_adset_level_dimensions.empty? && !selected_ad_level_dimensions.empty?)
-        query = query + "FROM adset_dimensions asd "
+        query = query + "FROM ad_dimensions ad "
       end
 
       if(!selected_ad_level_dimensions.empty?)
